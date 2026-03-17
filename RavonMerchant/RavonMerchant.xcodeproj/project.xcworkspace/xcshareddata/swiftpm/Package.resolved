@@ -1,0 +1,15 @@
+{
+  "originHash" : "ee7c732a879a7c9da5c25621786eecead7b13b7103de05df63b0e3fbd6f3835a",
+  "pins" : [
+    {
+      "identity" : "ravon-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mmarufov/ravon-core.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "49dedb3e19b548e63c580daf87ed59dd467bb1e4"
+      }
+    }
+  ],
+  "version" : 3
+}
