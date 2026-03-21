@@ -20,7 +20,6 @@ struct OrderDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         statusSection(order)
-                        verificationSection(order)
                         itemsSection(order)
 
                         if let address = order.deliveryAddressSnapshot {
@@ -65,21 +64,6 @@ struct OrderDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardStyle(padding: 16)
-    }
-
-    @ViewBuilder
-    private func verificationSection(_ order: Order) -> some View {
-        if let code = order.verificationCode {
-            VStack(spacing: 8) {
-                Text("Код подтверждения")
-                    .font(.headline)
-                Text(code)
-                    .font(.system(size: 36, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Color.ravonRed)
-            }
-            .frame(maxWidth: .infinity)
-            .cardStyle(padding: 16)
-        }
     }
 
     @ViewBuilder
