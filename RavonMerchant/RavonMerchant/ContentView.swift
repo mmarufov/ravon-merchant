@@ -1,24 +1,27 @@
-//
-//  ContentView.swift
-//  RavonMerchant
-//
-//  Created by Muhammad Marufov on 3/17/26.
-//
-
 import SwiftUI
+import RavonCore
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @ObservedObject private var auth = AuthService.shared
+    @AppStorage("selectedRestaurantId") private var selectedRestaurantId: String?
 
-#Preview {
-    ContentView()
+    var body: some View {
+        Group {
+            if !auth.isLoaded {
+                ProgressView("Загрузка...")
+            } else if !auth.isSignedIn {
+                LoginView()
+            } else if let idString = selectedRestaurantId,
+                      let id = UUID(uuidString: idString) {
+                MainTabView(restaurantId: id)
+            } else {
+                RestaurantPickerView { id in
+                    selectedRestaurantId = id.uuidString
+                }
+            }
+        }
+        .task {
+            await auth.loadSession()
+        }
+    }
 }
