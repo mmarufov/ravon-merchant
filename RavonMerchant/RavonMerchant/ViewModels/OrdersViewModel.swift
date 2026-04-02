@@ -26,7 +26,7 @@ final class OrdersViewModel: ObservableObject {
     }
 
     var activeOrders: [Order] {
-        orders.filter { !$0.status.isTerminal && $0.status != .created }
+        orders.filter { $0.status == .accepted || $0.status == .preparing }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -35,24 +35,28 @@ final class OrdersViewModel: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    func subscribe() {
-        RealtimeService.shared.subscribeToRestaurantOrders(restaurantId: restaurantId)
+    func startListening() async {
+        do {
+            try await RealtimeService.shared.subscribeToRestaurantOrders(restaurantId: restaurantId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
 
-        RealtimeService.shared.lastOrderChange
+        RealtimeService.shared.$lastOrderChange
+            .compactMap { $0 }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] change in
-                guard let self else { return }
-                if change.oldStatus == nil {
-                    // New order inserted
-                    alertNewOrder()
-                    hasNewOrderAlert = true
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.fetchOrders(silent: true)
                 }
-                Task { await self.fetchOrders(silent: true) }
             }
             .store(in: &cancellables)
     }
 
-    func unsubscribe() {
+    func stopListening() {
+        Task {
+            await RealtimeService.shared.unsubscribeFromOrders()
+        }
         cancellables.removeAll()
     }
 
@@ -61,7 +65,17 @@ final class OrdersViewModel: ObservableObject {
 
         do {
             let fetched = try await SupabaseService.shared.fetchOrdersForRestaurant(restaurantId: restaurantId)
+
+            let previousCreatedIds = Set(orders.filter { $0.status == .created }.map(\.id))
+            let newCreatedIds = Set(fetched.filter { $0.status == .created }.map(\.id))
+            let brandNewOrders = newCreatedIds.subtracting(previousCreatedIds)
+
             orders = fetched
+
+            if !brandNewOrders.isEmpty && !previousCreatedIds.isEmpty {
+                alertNewOrder()
+                hasNewOrderAlert = true
+            }
         } catch {
             if !silent { errorMessage = error.localizedDescription }
         }
@@ -69,9 +83,9 @@ final class OrdersViewModel: ObservableObject {
         if !silent { isLoading = false }
     }
 
-    func acceptOrder(_ orderId: UUID, estimatedPrepMinutes: Int) async {
+    func acceptOrder(_ orderId: UUID, estimatedPrepTime: Int) async {
         do {
-            try await SupabaseService.shared.acceptOrder(orderId: orderId, estimatedPrepMinutes: estimatedPrepMinutes)
+            try await SupabaseService.shared.acceptOrder(orderId: orderId, estimatedPrepMinutes: estimatedPrepTime)
             await fetchOrders(silent: true)
         } catch {
             errorMessage = error.localizedDescription
@@ -91,12 +105,21 @@ final class OrdersViewModel: ObservableObject {
         do {
             switch currentStatus {
             case .accepted:
-                try await SupabaseService.shared.updateOrderStatus(orderId: orderId, status: .preparing)
+                try await SupabaseService.shared.startPreparing(orderId: orderId)
             case .preparing:
                 try await SupabaseService.shared.markOrderReady(orderId: orderId)
             default:
                 return
             }
+            await fetchOrders(silent: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelOrder(_ orderId: UUID, reason: String) async {
+        do {
+            try await SupabaseService.shared.cancelOrder(orderId: orderId, reason: reason)
             await fetchOrders(silent: true)
         } catch {
             errorMessage = error.localizedDescription

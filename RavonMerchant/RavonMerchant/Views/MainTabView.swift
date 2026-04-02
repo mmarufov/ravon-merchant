@@ -2,21 +2,26 @@ import SwiftUI
 import RavonCore
 
 struct MainTabView: View {
-    let restaurantId: UUID
+    let restaurant: Restaurant
 
     var body: some View {
         TabView {
-            OrdersView(restaurantId: restaurantId)
+            DashboardView(restaurant: restaurant)
+                .tabItem {
+                    Label("Дашборд", systemImage: "chart.bar")
+                }
+
+            OrdersView(restaurantId: restaurant.id)
                 .tabItem {
                     Label("Заказы", systemImage: "list.clipboard")
                 }
 
-            MenuView(restaurantId: restaurantId)
+            MenuView(restaurantId: restaurant.id)
                 .tabItem {
                     Label("Меню", systemImage: "menucard")
                 }
 
-            SettingsView(restaurantId: restaurantId)
+            SettingsView(restaurantId: restaurant.id)
                 .tabItem {
                     Label("Настройки", systemImage: "gearshape")
                 }

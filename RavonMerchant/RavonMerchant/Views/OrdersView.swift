@@ -65,10 +65,10 @@ struct OrdersView: View {
             }
             .task {
                 await vm.fetchOrders()
-                vm.subscribe()
+                await vm.startListening()
             }
             .onDisappear {
-                vm.unsubscribe()
+                vm.stopListening()
             }
             .refreshable {
                 await vm.fetchOrders()
@@ -97,15 +97,6 @@ struct OrderRowView: View {
                 Label(order.status.displayName, systemImage: statusIcon)
                     .font(.caption)
                     .foregroundStyle(statusColor)
-                if let code = order.verificationCode {
-                    Text("Код: \(code)")
-                        .font(.caption.bold())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.ravonRed.opacity(0.1))
-                        .foregroundStyle(Color.ravonRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
                 Spacer()
                 Text(order.createdAt, style: .relative)
                     .font(.caption)

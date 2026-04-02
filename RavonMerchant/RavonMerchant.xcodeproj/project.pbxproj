@@ -366,7 +366,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mmarufov/ravon-core.git";
 			requirement = {
-				branch = "mmarufov/fix-shared-chat-err";
+				branch = main;
 				kind = branch;
 			};
 		};

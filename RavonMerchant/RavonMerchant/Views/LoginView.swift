@@ -18,6 +18,14 @@ struct LoginView: View {
             Spacer()
 
             VStack(spacing: 16) {
+                if vm.isSignUpMode {
+                    RavonTextField(
+                        icon: "person",
+                        placeholder: "Имя",
+                        text: $vm.fullName,
+                        contentType: .name
+                    )
+                }
                 RavonTextField(
                     icon: "envelope",
                     placeholder: "Email",
@@ -30,7 +38,7 @@ struct LoginView: View {
                     placeholder: "Пароль",
                     text: $vm.password,
                     isSecure: true,
-                    contentType: .password
+                    contentType: vm.isSignUpMode ? .newPassword : .password
                 )
             }
 
@@ -41,8 +49,23 @@ struct LoginView: View {
                     .multilineTextAlignment(.center)
             }
 
-            RavonPrimaryButton("Войти", isLoading: vm.isLoading) {
-                Task { await vm.signIn() }
+            RavonPrimaryButton(vm.isSignUpMode ? "Создать аккаунт" : "Войти", isLoading: vm.isLoading) {
+                Task {
+                    if vm.isSignUpMode {
+                        await vm.signUp()
+                    } else {
+                        await vm.signIn()
+                    }
+                }
+            }
+
+            Button {
+                vm.errorMessage = nil
+                vm.isSignUpMode.toggle()
+            } label: {
+                Text(vm.isSignUpMode ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Создать")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.ravonRed)
             }
 
             Spacer()
