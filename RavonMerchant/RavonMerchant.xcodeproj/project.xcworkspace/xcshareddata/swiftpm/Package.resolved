@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mmarufov/ravon-core.git",
       "state" : {
-        "branch" : "mmarufov/fix-shared-chat-err",
-        "revision" : "5da624e0329c5e6f9d3966ed7456850fda1b2729"
+        "branch" : "main",
+        "revision" : "6d4cfdc770cd23c54e03ca1c10c6ff86fab93eaf"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/supabase/supabase-swift",
       "state" : {
-        "revision" : "0f8bf83b55709e5530cd842a0185b9abba7a3c6c",
-        "version" : "2.41.1"
+        "revision" : "ed9042e60b57257e531331da365955a5c0568b12",
+        "version" : "2.43.0"
       }
     },
     {

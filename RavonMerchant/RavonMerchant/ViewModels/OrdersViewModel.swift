@@ -14,7 +14,7 @@ final class OrdersViewModel: ObservableObject {
     @Published var hasNewOrderAlert = false
 
     let restaurantId: UUID
-    private var refreshTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
 
     init(restaurantId: UUID) {
         self.restaurantId = restaurantId
@@ -35,18 +35,29 @@ final class OrdersViewModel: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    func startPolling() {
-        refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.fetchOrders(silent: true)
-            }
+    func startListening() async {
+        do {
+            try await RealtimeService.shared.subscribeToRestaurantOrders(restaurantId: restaurantId)
+        } catch {
+            errorMessage = error.localizedDescription
         }
+
+        RealtimeService.shared.$lastOrderChange
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.fetchOrders(silent: true)
+                }
+            }
+            .store(in: &cancellables)
     }
 
-    func stopPolling() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
+    func stopListening() {
+        Task {
+            await RealtimeService.shared.unsubscribeFromOrders()
+        }
+        cancellables.removeAll()
     }
 
     func fetchOrders(silent: Bool = false) async {
@@ -72,41 +83,50 @@ final class OrdersViewModel: ObservableObject {
         if !silent { isLoading = false }
     }
 
-    func acceptOrder(_ orderId: UUID, estimatedPrepMinutes: Int) async {
-        // TODO: Use SupabaseService.shared.acceptOrder(orderId:estimatedPrepMinutes:) when RavonCore is updated
-        await updateStatus(orderId: orderId, to: .accepted)
-    }
-
-    func rejectOrder(_ orderId: UUID, reason: String) async {
-        // TODO: Use SupabaseService.shared.rejectOrder(orderId:reason:) when RavonCore is updated
-        await updateStatus(orderId: orderId, to: .cancelled)
-    }
-
-    func advanceOrder(_ orderId: UUID, currentStatus: OrderStatus) async {
-        guard let next = nextStatus(for: currentStatus) else { return }
-        // TODO: For .preparing → .ready, use SupabaseService.shared.markOrderReady(orderId:) when RavonCore is updated
-        await updateStatus(orderId: orderId, to: next)
-    }
-
-    // MARK: - Private
-
-    private func updateStatus(orderId: UUID, to status: OrderStatus) async {
+    func acceptOrder(_ orderId: UUID, estimatedPrepTime: Int) async {
         do {
-            try await SupabaseService.shared.updateOrderStatus(orderId: orderId, status: status)
+            try await SupabaseService.shared.acceptOrder(orderId: orderId, estimatedPrepMinutes: estimatedPrepTime)
             await fetchOrders(silent: true)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func nextStatus(for status: OrderStatus) -> OrderStatus? {
-        switch status {
-        case .created: return .accepted
-        case .accepted: return .preparing
-        case .preparing: return .ready
-        default: return nil
+    func rejectOrder(_ orderId: UUID, reason: String) async {
+        do {
+            try await SupabaseService.shared.rejectOrder(orderId: orderId, reason: reason)
+            await fetchOrders(silent: true)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
+
+    func advanceOrder(_ orderId: UUID, currentStatus: OrderStatus) async {
+        do {
+            switch currentStatus {
+            case .accepted:
+                try await SupabaseService.shared.startPreparing(orderId: orderId)
+            case .preparing:
+                try await SupabaseService.shared.markOrderReady(orderId: orderId)
+            default:
+                return
+            }
+            await fetchOrders(silent: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelOrder(_ orderId: UUID, reason: String) async {
+        do {
+            try await SupabaseService.shared.cancelOrder(orderId: orderId, reason: reason)
+            await fetchOrders(silent: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Private
 
     private func alertNewOrder() {
         AudioServicesPlayAlertSound(SystemSoundID(1005))

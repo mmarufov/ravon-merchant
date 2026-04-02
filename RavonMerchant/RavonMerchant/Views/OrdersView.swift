@@ -65,7 +65,10 @@ struct OrdersView: View {
             }
             .task {
                 await vm.fetchOrders()
-                vm.startPolling()
+                await vm.startListening()
+            }
+            .onDisappear {
+                vm.stopListening()
             }
             .refreshable {
                 await vm.fetchOrders()
