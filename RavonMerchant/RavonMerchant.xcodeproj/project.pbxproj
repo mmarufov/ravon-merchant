@@ -366,7 +366,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/mmarufov/ravon-core.git";
 			requirement = {
-				branch = main;
+				branch = "mmarufov/supabase-check";
 				kind = branch;
 			};
 		};

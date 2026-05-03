@@ -30,6 +30,12 @@ struct RestaurantHoursView: View {
 
     var body: some View {
         Form {
+            Section {
+                Label("Время указывается по Душанбе (UTC+5).", systemImage: "globe")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             ForEach($entries) { $entry in
                 Section(entry.dayName) {
                     Toggle("Закрыто", isOn: $entry.isClosed)

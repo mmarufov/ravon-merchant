@@ -35,6 +35,13 @@ final class OrdersViewModel: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Orders the consumer scheduled for later. Read-only here — `activate_scheduled_orders`
+    /// (server cron) flips them to `.created` automatically when prep-time before scheduledFor.
+    var scheduledOrders: [Order] {
+        orders.filter { $0.status == .scheduled }
+            .sorted { ($0.scheduledFor ?? .distantFuture) < ($1.scheduledFor ?? .distantFuture) }
+    }
+
     func startListening() async {
         do {
             try await RealtimeService.shared.subscribeToRestaurantOrders(restaurantId: restaurantId)
