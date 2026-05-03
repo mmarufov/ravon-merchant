@@ -30,20 +30,28 @@ final class OnboardingViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // Belt-and-suspenders defaults so the consumer app never sees NULL/empty
+        // values that would break decoding of non-optional Restaurant fields.
+        let trimmedCuisine = cuisineType.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCuisine = trimmedCuisine.isEmpty ? "Разное" : trimmedCuisine
+        let resolvedDeliveryFee = max(0, deliveryFee)
+        let resolvedMinOrder = max(0, minOrderAmount)
+        let resolvedDeliveryTime = deliveryTimeMin > 0 ? deliveryTimeMin : 30
+
         do {
             let insert = RestaurantInsert(
                 name: name,
                 description: nil,
-                cuisineType: cuisineType,
+                cuisineType: resolvedCuisine,
                 address: address,
                 latitude: nil,
                 longitude: nil,
-                deliveryFee: deliveryFee,
-                minOrderAmount: minOrderAmount,
-                deliveryTimeMin: deliveryTimeMin
+                deliveryFee: resolvedDeliveryFee,
+                minOrderAmount: resolvedMinOrder,
+                deliveryTimeMin: resolvedDeliveryTime
             )
             restaurant = try await SupabaseService.shared.createRestaurant(insert)
-            suggestedCategories = MenuCategoryTemplate.suggestions(for: cuisineType)
+            suggestedCategories = MenuCategoryTemplate.suggestions(for: resolvedCuisine)
             currentStep = 2
         } catch {
             let desc = error.localizedDescription
