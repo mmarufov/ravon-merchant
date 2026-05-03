@@ -14,7 +14,12 @@ struct OrderDetailView: View {
     @State private var rejectReason = ""
     @State private var cancelReason = ""
     @State private var courierPosition: CLLocationCoordinate2D?
+    @State private var chatMessages: [ChatMessage] = []
     @State private var cancellables = Set<AnyCancellable>()
+
+    /// Server convention: system messages on the escalation ladder are written
+    /// with sender_id = zero UUID (verified by RavonCore ChatRLSCodingTests).
+    private static let systemSenderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
 
     private var order: Order? {
         vm.orders.first { $0.id == orderId }
@@ -27,8 +32,25 @@ struct OrderDetailView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         statusSection(order)
 
-                        if order.status == .ready, let code = order.verificationCode {
-                            verificationCodeSection(code)
+                        if isAutoCancelledForRestaurantTooLong(order) {
+                            autoCancelAlertSection
+                        }
+
+                        if order.status == .cancelledByCourier {
+                            cancelledByCourierSection(order)
+                        }
+
+                        if order.restaurantDelayMin > 0 {
+                            restaurantDelaySection(order.restaurantDelayMin)
+                        }
+
+                        if order.reassignCount > 0 && !order.status.isTerminal {
+                            reassignmentSection(order.reassignCount)
+                        }
+
+                        if [.preparing, .ready].contains(order.status),
+                           let code = order.pickupVerificationCode {
+                            pickupCodeSection(code)
                         }
 
                         if let courierId = order.courierId,
@@ -45,6 +67,8 @@ struct OrderDetailView: View {
                         if let notes = order.notes, !notes.isEmpty {
                             notesSection(notes)
                         }
+
+                        chatSection
 
                         actionsSection(order)
                     }
@@ -66,6 +90,25 @@ struct OrderDetailView: View {
             cancelSheet
         }
         .task {
+            do {
+                chatMessages = try await SupabaseService.shared.fetchMessages(orderId: orderId)
+            } catch {
+                chatMessages = []
+            }
+
+            do {
+                try await RealtimeService.shared.subscribeToChat(orderId: orderId)
+                RealtimeService.shared.$lastChatMessage
+                    .compactMap { $0 }
+                    .receive(on: DispatchQueue.main)
+                    .sink { event in
+                        if !chatMessages.contains(where: { $0.id == event.message.id }) {
+                            chatMessages.append(event.message)
+                        }
+                    }
+                    .store(in: &cancellables)
+            } catch { /* read-only preview — silent on failure */ }
+
             guard let courierId = order?.courierId else { return }
             do {
                 try await RealtimeService.shared.subscribeToCourierLocation(courierId: courierId)
@@ -83,7 +126,10 @@ struct OrderDetailView: View {
                 .store(in: &cancellables)
         }
         .onDisappear {
-            Task { await RealtimeService.shared.unsubscribeFromCourierLocation() }
+            Task {
+                await RealtimeService.shared.unsubscribeFromCourierLocation()
+                await RealtimeService.shared.unsubscribeFromChat()
+            }
             cancellables.removeAll()
         }
     }
@@ -107,12 +153,12 @@ struct OrderDetailView: View {
     }
 
     @ViewBuilder
-    private func verificationCodeSection(_ code: String) -> some View {
+    private func pickupCodeSection(_ code: String) -> some View {
         VStack(spacing: 8) {
-            Text("Код выдачи")
+            Text("Готов к выдаче")
                 .font(.headline)
-            Text(code)
-                .font(.system(size: 48, weight: .bold, design: .monospaced))
+            Text("Код для курьера: \(code)")
+                .font(.system(size: 32, weight: .bold, design: .monospaced))
                 .foregroundStyle(Color.ravonRed)
             Text("Курьер назовёт этот код при получении")
                 .font(.caption)
@@ -124,6 +170,116 @@ struct OrderDetailView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.ravonRed.opacity(0.3), lineWidth: 2)
         )
+    }
+
+    @ViewBuilder
+    private func restaurantDelaySection(_ minutes: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("🕒 Курьер сообщил: задержка +\(minutes) мин (всего \(minutes)/30)")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.orange)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func reassignmentSection(_ count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text("↻ Поиск нового курьера (попытка \(count)/3)")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.blue)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.blue.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var autoCancelAlertSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("⚠️ Заказ автоматически отменён")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.red)
+            Text("Ресторан превысил время ожидания (30 мин). Курьер получил 50% оплаты.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.red.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.red.opacity(0.4), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private func cancelledByCourierSection(_ order: Order) -> some View {
+        let reasonText = CancellationReason(rawValue: order.cancellationReasonCode ?? "")?
+            .localizedDisplayName ?? "Без причины"
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Отменён курьером")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.red)
+            Text(reasonText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.red.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    @ViewBuilder
+    private var chatSection: some View {
+        if !chatMessages.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Чат")
+                    .font(.headline)
+                ForEach(chatMessages) { message in
+                    chatRow(message)
+                    if message.id != chatMessages.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardStyle(padding: 16)
+        }
+    }
+
+    @ViewBuilder
+    private func chatRow(_ message: ChatMessage) -> some View {
+        if message.senderId == Self.systemSenderId {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("🔔 Система")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(message.body)
+                    .font(.subheadline.italic())
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message.createdAt.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Text(message.body)
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    private func isAutoCancelledForRestaurantTooLong(_ order: Order) -> Bool {
+        order.status == .cancelledBySystem
+            && order.cancellationReasonCode == CancellationReason.restaurantTooLongWait.rawValue
     }
 
     @ViewBuilder
@@ -407,7 +563,9 @@ struct OrderDetailView: View {
         case .accepted: return .blue
         case .preparing: return .purple
         case .ready: return .green
-        case .cancelled: return .red
+        case .cancelled, .cancelledByCustomer, .cancelledByRestaurant,
+             .cancelledBySystem, .cancelledByCourier, .rejected:
+            return .red
         default: return .gray
         }
     }

@@ -90,15 +90,28 @@ struct OrdersView: View {
 struct OrderRowView: View {
     let order: Order
 
+    private var isAutoCancelledForRestaurantTooLong: Bool {
+        order.status == .cancelledBySystem
+            && order.cancellationReasonCode == CancellationReason.restaurantTooLongWait.rawValue
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Заказ #\(order.id.uuidString.prefix(6).uppercased())")
-                    .font(.headline)
-                Spacer()
-                Text("\(Int(order.total)) сум")
-                    .font(.headline)
-                    .foregroundStyle(Color.ravonRed)
+            if isAutoCancelledForRestaurantTooLong {
+                autoCancelBanner
+            }
+
+            if order.status == .cancelledByCourier {
+                cancelledByCourierHeader
+            } else {
+                HStack {
+                    Text("Заказ #\(order.id.uuidString.prefix(6).uppercased())")
+                        .font(.headline)
+                    Spacer()
+                    Text("\(Int(order.total)) сум")
+                        .font(.headline)
+                        .foregroundStyle(Color.ravonRed)
+                }
             }
 
             HStack {
@@ -111,6 +124,25 @@ struct OrderRowView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if [.preparing, .ready].contains(order.status),
+               let code = order.pickupVerificationCode {
+                Text("Готов к выдаче — Код для курьера: \(code)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.ravonRed)
+            }
+
+            if order.restaurantDelayMin > 0 {
+                Text("🕒 Курьер сообщил: задержка +\(order.restaurantDelayMin) мин (всего \(order.restaurantDelayMin)/30)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            if order.reassignCount > 0 && !order.status.isTerminal {
+                Text("↻ Поиск нового курьера (попытка \(order.reassignCount)/3)")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+
             if let items = order.orderItems, !items.isEmpty {
                 Text(items.map { "\($0.itemName) x\($0.quantity)" }.joined(separator: ", "))
                     .font(.caption)
@@ -121,14 +153,47 @@ struct OrderRowView: View {
         .padding(.vertical, 4)
     }
 
+    private var autoCancelBanner: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("⚠️ Заказ автоматически отменён")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.red)
+            Text("Ресторан превысил время ожидания (30 мин). Курьер получил 50% оплаты.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color.red.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var cancelledByCourierHeader: some View {
+        let reasonText = CancellationReason(rawValue: order.cancellationReasonCode ?? "")?
+            .localizedDisplayName ?? "Без причины"
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("[CANCELLED] Заказ #\(order.id.uuidString.prefix(6).uppercased()) · \(Int(order.total)) ₽")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.red)
+                Spacer()
+            }
+            Text("Отменён курьером — \(reasonText)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var statusIcon: String {
         switch order.status {
-        case .created:   return "bell.fill"
-        case .accepted:  return "checkmark.circle"
-        case .preparing: return "flame"
-        case .ready:     return "bag.fill"
-        case .scheduled: return "calendar"
-        default:         return "circle"
+        case .created:            return "bell.fill"
+        case .accepted:           return "checkmark.circle"
+        case .preparing:          return "flame"
+        case .ready:              return "bag.fill"
+        case .scheduled:          return "calendar"
+        case .cancelledByCourier: return "xmark.octagon.fill"
+        case .cancelledBySystem:  return "exclamationmark.triangle.fill"
+        default:                  return "circle"
         }
     }
 
@@ -139,7 +204,9 @@ struct OrderRowView: View {
         case .preparing: return .purple
         case .ready:     return .green
         case .scheduled: return .blue
-        case .cancelled: return .red
+        case .cancelled, .cancelledByCustomer, .cancelledByRestaurant,
+             .cancelledBySystem, .cancelledByCourier, .rejected:
+            return .red
         default:         return .gray
         }
     }
