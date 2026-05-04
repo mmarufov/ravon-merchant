@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mmarufov/ravon-core.git",
       "state" : {
-        "branch" : "mmarufov/courier-hardening",
-        "revision" : "a99c6e48571db84ddd487f6f1aa19885e79d91ea"
+        "branch" : "mmarufov/bucharest-v7",
+        "revision" : "fde7ec42e29bc6e97a21300e0c61e453788b5322"
       }
     },
     {

@@ -17,10 +17,6 @@ struct OrderDetailView: View {
     @State private var chatMessages: [ChatMessage] = []
     @State private var cancellables = Set<AnyCancellable>()
 
-    /// Server convention: system messages on the escalation ladder are written
-    /// with sender_id = zero UUID (verified by RavonCore ChatRLSCodingTests).
-    private static let systemSenderId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-
     private var order: Order? {
         vm.orders.first { $0.id == orderId }
     }
@@ -257,7 +253,7 @@ struct OrderDetailView: View {
 
     @ViewBuilder
     private func chatRow(_ message: ChatMessage) -> some View {
-        if message.senderId == Self.systemSenderId {
+        if message.isSystem {
             VStack(alignment: .leading, spacing: 2) {
                 Text("🔔 Система")
                     .font(.caption2.weight(.semibold))
