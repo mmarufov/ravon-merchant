@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mmarufov/ravon-core.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "ec42d25ae27562420d94ca6c9987d02c16cd5c87"
+        "branch" : "mmarufov/auth-overhaul",
+        "revision" : "a1e9d6c814436c82dd93388158768e6720c2b18e"
       }
     },
     {
