@@ -99,6 +99,9 @@ struct SettingsView: View {
                             LabeledContent("Телефон", value: phone)
                         }
                         LabeledContent("Роль", value: profile.role.displayName)
+                        NavigationLink("Изменить пароль") {
+                            ChangePasswordScreen()
+                        }
                     }
                 }
 
