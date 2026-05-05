@@ -26,13 +26,49 @@ final class OrdersViewModel: ObservableObject {
     }
 
     var activeOrders: [Order] {
-        orders.filter { $0.status == .accepted || $0.status == .preparing }
-            .sorted { $0.createdAt > $1.createdAt }
+        orders
+            .filter { isActiveOrSurfacedTerminal($0) }
+            .sorted { lhs, rhs in
+                // Cancelled-by-courier and auto-cancelled bubble to top so the merchant
+                // sees food that needs handling before the rest of the queue.
+                let lhsAttention = needsAttention(lhs)
+                let rhsAttention = needsAttention(rhs)
+                if lhsAttention != rhsAttention { return lhsAttention }
+                return lhs.createdAt > rhs.createdAt
+            }
     }
 
     var readyOrders: [Order] {
         orders.filter { $0.status == .ready }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func isActiveOrSurfacedTerminal(_ order: Order) -> Bool {
+        switch order.status {
+        case .accepted, .preparing:
+            return true
+        case .cancelledByCourier:
+            return true
+        case .cancelledBySystem:
+            // Surface only the auto-cancel-for-restaurant-too-long terminal — that's the
+            // one the merchant gets paid 50% for and needs to see in the queue.
+            return order.cancellationReasonCode == CancellationReason.restaurantTooLongWait.rawValue
+        default:
+            return false
+        }
+    }
+
+    private func needsAttention(_ order: Order) -> Bool {
+        order.status == .cancelledByCourier
+            || (order.status == .cancelledBySystem
+                && order.cancellationReasonCode == CancellationReason.restaurantTooLongWait.rawValue)
+    }
+
+    /// Orders the consumer scheduled for later. Read-only here — `activate_scheduled_orders`
+    /// (server cron) flips them to `.created` automatically when prep-time before scheduledFor.
+    var scheduledOrders: [Order] {
+        orders.filter { $0.status == .scheduled }
+            .sorted { ($0.scheduledFor ?? .distantFuture) < ($1.scheduledFor ?? .distantFuture) }
     }
 
     func startListening() async {

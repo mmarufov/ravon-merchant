@@ -23,7 +23,7 @@ final class MenuViewModel: ObservableObject {
         isLoading = true
 
         do {
-            async let cats = SupabaseService.shared.fetchMenuCategories(restaurantId: restaurantId)
+            async let cats = SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
             async let menuItems = SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
             async let mods = SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
 
@@ -39,7 +39,10 @@ final class MenuViewModel: ObservableObject {
 
     func items(for category: MenuCategory) -> [MenuItem] {
         items.filter { $0.categoryId == category.id }
-            .sorted { $0.sortOrder < $1.sortOrder }
+            .sorted { lhs, rhs in
+                if lhs.isSoftDeleted != rhs.isSoftDeleted { return !lhs.isSoftDeleted }
+                return lhs.sortOrder < rhs.sortOrder
+            }
     }
 
     // MARK: - Menu Item CRUD
@@ -128,6 +131,15 @@ final class MenuViewModel: ObservableObject {
         }
     }
 
+    func restoreItem(id: UUID) async {
+        do {
+            try await SupabaseService.shared.restoreMenuItem(id: id)
+            items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func uploadMenuItemImage(menuItemId: UUID, imageData: Data) async {
         isSaving = true
         do {
@@ -154,7 +166,7 @@ final class MenuViewModel: ObservableObject {
                 sortOrder: sortOrder
             )
             _ = try await SupabaseService.shared.createMenuCategory(insert)
-            categories = try await SupabaseService.shared.fetchMenuCategories(restaurantId: restaurantId)
+            categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
             errorMessage = error.localizedDescription
@@ -166,7 +178,7 @@ final class MenuViewModel: ObservableObject {
         isSaving = true
         do {
             try await SupabaseService.shared.updateMenuCategory(id: id, name: name, sortOrder: sortOrder)
-            categories = try await SupabaseService.shared.fetchMenuCategories(restaurantId: restaurantId)
+            categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
             errorMessage = error.localizedDescription
@@ -177,10 +189,30 @@ final class MenuViewModel: ObservableObject {
     func deleteCategory(id: UUID) async {
         do {
             try await SupabaseService.shared.deleteMenuCategory(id: id)
-            categories = try await SupabaseService.shared.fetchMenuCategories(restaurantId: restaurantId)
+            categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
             errorMessage = mapError(error)
+        }
+    }
+
+    func restoreCategory(id: UUID) async {
+        do {
+            try await SupabaseService.shared.restoreMenuCategory(id: id)
+            categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
+                .sorted { $0.sortOrder < $1.sortOrder }
+        } catch {
+            errorMessage = mapError(error)
+        }
+    }
+
+    func toggleCategoryAvailability(_ category: MenuCategory) async {
+        do {
+            try await SupabaseService.shared.toggleMenuCategoryAvailability(id: category.id, isAvailable: !category.isAvailable)
+            categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
+                .sorted { $0.sortOrder < $1.sortOrder }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

@@ -7,7 +7,7 @@
       "location" : "https://github.com/mmarufov/ravon-core.git",
       "state" : {
         "branch" : "main",
-        "revision" : "6d4cfdc770cd23c54e03ca1c10c6ff86fab93eaf"
+        "revision" : "ec42d25ae27562420d94ca6c9987d02c16cd5c87"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/supabase/supabase-swift",
       "state" : {
-        "revision" : "ed9042e60b57257e531331da365955a5c0568b12",
-        "version" : "2.43.0"
+        "revision" : "17261e93c60aa721e3c17312bfeb2ae6de3d6f8a",
+        "version" : "2.43.1"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "fa308c07a6fa04a727212d793e761460e41049c3",
-        "version" : "4.3.0"
+        "revision" : "bb4ba815dab96d4edc1e0b86d7b9acf9ff973a84",
+        "version" : "4.3.1"
       }
     },
     {
