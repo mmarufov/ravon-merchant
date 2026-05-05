@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mmarufov/ravon-core.git",
       "state" : {
-        "branch" : "mmarufov/bucharest-v7",
-        "revision" : "fde7ec42e29bc6e97a21300e0c61e453788b5322"
+        "branch" : "main",
+        "revision" : "ec42d25ae27562420d94ca6c9987d02c16cd5c87"
       }
     },
     {
