@@ -28,6 +28,7 @@ final class OnboardingViewModel: ObservableObject {
         deliveryTimeMin: Int
     ) async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         // Belt-and-suspenders defaults so the consumer app never sees NULL/empty
@@ -54,14 +55,21 @@ final class OnboardingViewModel: ObservableObject {
             suggestedCategories = MenuCategoryTemplate.suggestions(for: resolvedCuisine)
             currentStep = 2
         } catch {
-            let desc = error.localizedDescription
-            if desc.contains("merchantAlreadyHasRestaurant") || desc.contains("already") {
-                // Merchant already has a restaurant — fetch it and skip ahead
-                if let existing = try? await SupabaseService.shared.fetchMyRestaurant() {
+            guard isAlreadyHasRestaurant(error) else {
+                errorMessage = MerchantError.message(for: error)
+                return
+            }
+            // Merchant already has a restaurant — fetch it and resume where they left off.
+            do {
+                if let existing = try await SupabaseService.shared.fetchMyRestaurant() {
                     await resumeOnboarding(for: existing)
+                } else {
+                    errorMessage = MerchantError.message(for: error)
                 }
-            } else {
-                errorMessage = mapError(error)
+            } catch {
+                // A failed refetch used to fall through to nothing at all: the Create
+                // button simply went quiet and the merchant was stuck on step 1.
+                errorMessage = MerchantError.message(for: error)
             }
         }
     }
@@ -71,6 +79,7 @@ final class OnboardingViewModel: ObservableObject {
     func uploadRestaurantPhoto(imageData: Data) async {
         guard let restaurant else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
@@ -83,7 +92,7 @@ final class OnboardingViewModel: ObservableObject {
             self.restaurant = try await SupabaseService.shared.fetchMyRestaurant()
             _ = url
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -96,6 +105,7 @@ final class OnboardingViewModel: ObservableObject {
     func createCategories(names: [String]) async {
         guard let restaurant else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
@@ -110,7 +120,7 @@ final class OnboardingViewModel: ObservableObject {
             }
             currentStep = 4
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -125,6 +135,7 @@ final class OnboardingViewModel: ObservableObject {
     ) async {
         guard let restaurant else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
@@ -154,7 +165,7 @@ final class OnboardingViewModel: ObservableObject {
 
             createdItems.append(item)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -165,7 +176,7 @@ final class OnboardingViewModel: ObservableObject {
             try await SupabaseService.shared.deleteMenuCategory(id: id)
             createdCategories.removeAll { $0.id == id }
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -174,6 +185,7 @@ final class OnboardingViewModel: ObservableObject {
     func saveHours(_ entries: [(dayOfWeek: Int, openingTime: String, closingTime: String, isClosed: Bool)]) async {
         guard let restaurant else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
@@ -189,7 +201,7 @@ final class OnboardingViewModel: ObservableObject {
             try await SupabaseService.shared.upsertRestaurantHours(upserts)
             currentStep = 6
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -201,7 +213,7 @@ final class OnboardingViewModel: ObservableObject {
             let (r, cats, menuItems) = try await SupabaseService.shared.fetchRestaurantPreview(restaurantId: restaurant.id)
             previewData = (r, cats, menuItems)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -209,20 +221,21 @@ final class OnboardingViewModel: ObservableObject {
         do {
             progress = try await SupabaseService.shared.fetchOnboardingProgress()
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func activateRestaurant() async {
         guard let restaurant else { return }
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
             try await SupabaseService.shared.activateRestaurant(id: restaurant.id)
             self.restaurant = try await SupabaseService.shared.fetchMyRestaurant()
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -231,6 +244,7 @@ final class OnboardingViewModel: ObservableObject {
     func resumeOnboarding(for restaurant: Restaurant) async {
         self.restaurant = restaurant
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
 
         do {
@@ -251,25 +265,25 @@ final class OnboardingViewModel: ObservableObject {
                 currentStep = 6
             }
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
-    // MARK: - Error Mapping
+    // MARK: - Error classification
 
-    private func mapError(_ error: Error) -> String {
-        let desc = error.localizedDescription
-        if desc.contains("merchantAlreadyHasRestaurant") || desc.contains("already") {
-            return "У вас уже есть ресторан"
-        } else if desc.contains("onboardingIncomplete") {
-            return "Заполните все данные перед открытием"
-        } else if desc.contains("imageTooLarge") {
-            return "Фото слишком большое (макс. 5 МБ)"
-        } else if desc.contains("unsupportedImageFormat") {
-            return "Поддерживаются только JPG, PNG, WEBP"
-        } else if desc.contains("categoryNotEmpty") {
-            return "Сначала удалите все блюда из категории"
+    /// Typed replacement for `desc.contains("already")`.
+    ///
+    /// That substring match was not just cosmetic — it was *control flow*: it decided
+    /// whether to reroute the wizard into resume mode. Any unrelated failure whose
+    /// description happened to contain "already" sent the merchant somewhere else, and
+    /// since `ServiceError.localizedDescription` is the Russian text, the
+    /// `"merchantAlreadyHasRestaurant"` branch beside it could never match at all.
+    private func isAlreadyHasRestaurant(_ error: Error) -> Bool {
+        if let service = error as? ServiceError,
+           case .merchantAlreadyHasRestaurant = service {
+            return true
         }
-        return desc
+        // The server's own token, for the case where the error arrives untyped.
+        return String(describing: error).uppercased().contains("MERCHANT_ALREADY_HAS_RESTAURANT")
     }
 }

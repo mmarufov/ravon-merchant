@@ -19,6 +19,7 @@ final class SettingsViewModel: ObservableObject {
 
     func fetchData() async {
         isLoading = true
+        errorMessage = nil
 
         do {
             async let p = SupabaseService.shared.fetchProfile()
@@ -29,18 +30,19 @@ final class SettingsViewModel: ObservableObject {
             restaurant = try await r
             hours = try await h
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
 
         isLoading = false
     }
 
     func toggleAcceptingOrders(_ accepting: Bool) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.toggleAcceptingOrders(restaurantId: restaurantId, accepting: accepting)
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -55,6 +57,7 @@ final class SettingsViewModel: ObservableObject {
         maxConcurrentOrders: Int?
     ) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.updateRestaurant(
                 id: restaurantId,
@@ -69,18 +72,19 @@ final class SettingsViewModel: ObservableObject {
             )
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func saveHours(_ hoursList: [RestaurantHoursUpsert]) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.upsertRestaurantHours(hoursList)
             hours = try await SupabaseService.shared.fetchRestaurantHours(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
@@ -89,33 +93,36 @@ final class SettingsViewModel: ObservableObject {
 
     func pauseRestaurant() async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.pauseRestaurant(id: restaurantId)
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func resumeRestaurant() async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.resumeRestaurant(id: restaurantId)
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func closeRestaurant() async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.closeRestaurant(id: restaurantId)
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
@@ -124,13 +131,14 @@ final class SettingsViewModel: ObservableObject {
         do {
             return try await SupabaseService.shared.fetchMerchantStats(restaurantId: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
             return nil
         }
     }
 
     func uploadRestaurantImage(imageData: Data) async {
         isSaving = true
+        errorMessage = nil
         do {
             _ = try await SupabaseService.shared.uploadRestaurantImage(
                 restaurantId: restaurantId,
@@ -139,30 +147,18 @@ final class SettingsViewModel: ObservableObject {
             )
             restaurant = try await SupabaseService.shared.fetchRestaurant(id: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func signOut() async {
+        errorMessage = nil
         do {
             try await AuthService.shared.signOut()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
-    // MARK: - Error Mapping
-
-    private func mapError(_ error: Error) -> String {
-        let desc = error.localizedDescription
-        if desc.contains("invalidStatusTransition") {
-            return "Невозможно изменить статус"
-        } else if desc.contains("imageTooLarge") {
-            return "Фото слишком большое (макс. 5 МБ)"
-        } else if desc.contains("unsupportedImageFormat") {
-            return "Поддерживаются только JPG, PNG, WEBP"
-        }
-        return desc
-    }
 }

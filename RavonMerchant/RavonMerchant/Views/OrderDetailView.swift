@@ -44,9 +44,16 @@ struct OrderDetailView: View {
                             reassignmentSection(order.reassignCount)
                         }
 
-                        if [.preparing, .ready].contains(order.status),
-                           let code = order.pickupVerificationCode {
-                            pickupCodeSection(code)
+                        if order.isInMerchantHandoff {
+                            handoffSection(order)
+                        }
+
+                        if order.merchantShowsPickupCode, let code = order.pickupVerificationCode {
+                            // Driven by the merchant's `showPickupCode` obligation in
+                            // `OrderLifecycle`, which spans the whole hand-off window.
+                            // The old `[.preparing, .ready]` gate hid the code at
+                            // `.assigned` — with the courier at the counter asking for it.
+                            pickupCodeSection(code, isHandoff: order.isInMerchantHandoff)
                         }
 
                         if let courierId = order.courierId,
@@ -65,6 +72,11 @@ struct OrderDetailView: View {
                         }
 
                         chatSection
+
+                        // Action failures land here, not in an alert: an alert cannot be
+                        // presented over the accept/reject sheets, and these used to be
+                        // assigned to a property no view read at all.
+                        ErrorBanner(message: vm.actionError) { vm.clearActionError() }
 
                         actionsSection(order)
                     }
@@ -85,6 +97,9 @@ struct OrderDetailView: View {
         .sheet(isPresented: $showCancelSheet) {
             cancelSheet
         }
+        .onChange(of: showAcceptSheet) { _, shown in if shown { vm.clearActionError() } }
+        .onChange(of: showRejectSheet) { _, shown in if shown { vm.clearActionError() } }
+        .onChange(of: showCancelSheet) { _, shown in if shown { vm.clearActionError() } }
         .task {
             do {
                 chatMessages = try await SupabaseService.shared.fetchMessages(orderId: orderId)
@@ -149,14 +164,14 @@ struct OrderDetailView: View {
     }
 
     @ViewBuilder
-    private func pickupCodeSection(_ code: String) -> some View {
+    private func pickupCodeSection(_ code: String, isHandoff: Bool) -> some View {
         VStack(spacing: 8) {
-            Text("Готов к выдаче")
+            Text(isHandoff ? "Назовите код курьеру" : "Готов к выдаче")
                 .font(.headline)
             Text("Код для курьера: \(code)")
                 .font(.system(size: 32, weight: .bold, design: .monospaced))
                 .foregroundStyle(Color.ravonRed)
-            Text("Курьер назовёт этот код при получении")
+            Text("Назовите код курьеру — он введёт его в приложении")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -166,6 +181,31 @@ struct OrderDetailView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.ravonRed.opacity(0.3), lineWidth: 2)
         )
+    }
+
+    /// The hand-off window. The merchant used to lose the order entirely here — it left
+    /// every queue tab at `.assigned`, which also made this screen unreachable.
+    @ViewBuilder
+    private func handoffSection(_ order: Order) -> some View {
+        let arrived = order.status == .courierArrivedRestaurant
+        VStack(alignment: .leading, spacing: 4) {
+            Text(arrived ? "Курьер у ресторана" : "Курьер едет за заказом")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(arrived ? .orange : .teal)
+            Text(arrived
+                 ? "Выдайте заказ и назовите код курьеру."
+                 : "Заказ закреплён за курьером. Код ниже — назовите его при выдаче.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background((arrived ? Color.orange : Color.teal).opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke((arrived ? Color.orange : Color.teal).opacity(0.4), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
@@ -322,7 +362,7 @@ struct OrderDetailView: View {
                         Spacer()
                         Text("x\(item.quantity)")
                             .foregroundStyle(.secondary)
-                        Text("\(Int(item.totalPrice)) сум")
+                        Text("\(Int(item.totalPrice)) сомони")
                             .monospacedDigit()
                     }
 
@@ -336,7 +376,7 @@ struct OrderDetailView: View {
                 HStack {
                     Text("Доставка")
                     Spacer()
-                    Text("\(Int(order.deliveryFee)) сум")
+                    Text("\(Int(order.deliveryFee)) сомони")
                         .monospacedDigit()
                 }
                 .foregroundStyle(.secondary)
@@ -345,7 +385,7 @@ struct OrderDetailView: View {
                     Text("Итого")
                         .fontWeight(.semibold)
                     Spacer()
-                    Text("\(Int(order.total)) сум")
+                    Text("\(Int(order.total)) сомони")
                         .fontWeight(.semibold)
                         .monospacedDigit()
                 }
@@ -441,17 +481,41 @@ struct OrderDetailView: View {
         }
     }
 
+    /// Blocked on the backend: there is no `merchant_cancel_order` RPC, and the app was
+    /// calling `cancel_order_by_consumer` — the consumer's — which a merchant caller cannot
+    /// use. With the sheet dismissing unconditionally over the swallowed error, the
+    /// merchant saw a successful cancellation that never happened. Until core ships the
+    /// RPC the button says so instead. `MerchantBackendGap` reads the gap out of
+    /// `OrderLifecycle.unimplementedRPCs`, so this re-enables itself when the RPC lands.
+    @ViewBuilder
     private var cancelButton: some View {
-        Button {
-            showCancelSheet = true
-        } label: {
-            Text("Отменить заказ")
-                .fontWeight(.medium)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.red.opacity(0.1))
-                .foregroundStyle(.red)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+        if MerchantBackendGap.merchantCancelAvailable {
+            Button {
+                showCancelSheet = true
+            } label: {
+                Text("Отменить заказ")
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red.opacity(0.1))
+                    .foregroundStyle(.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        } else {
+            VStack(spacing: 6) {
+                Text("Отменить заказ")
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color(.systemGray5))
+                    .foregroundStyle(.secondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                Text("Отмена рестораном пока недоступна — свяжитесь с поддержкой")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -468,10 +532,15 @@ struct OrderDetailView: View {
                     .padding()
                     .cardStyle(padding: 0)
 
+                ErrorBanner(message: vm.actionError)
+
                 RavonPrimaryButton("Принять заказ") {
                     Task {
-                        await vm.acceptOrder(orderId, estimatedPrepTime: estimatedMinutes)
-                        showAcceptSheet = false
+                        // Stay open on failure. This used to dismiss unconditionally, so a
+                        // rejected accept looked exactly like a successful one.
+                        if await vm.acceptOrder(orderId, estimatedPrepTime: estimatedMinutes) {
+                            showAcceptSheet = false
+                        }
                     }
                 }
 
@@ -499,11 +568,14 @@ struct OrderDetailView: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(3...6)
 
+                ErrorBanner(message: vm.actionError)
+
                 RavonPrimaryButton("Отклонить заказ") {
                     Task {
-                        await vm.rejectOrder(orderId, reason: rejectReason)
-                        showRejectSheet = false
-                        rejectReason = ""
+                        if await vm.rejectOrder(orderId, reason: rejectReason) {
+                            showRejectSheet = false
+                            rejectReason = ""
+                        }
                     }
                 }
 
@@ -531,11 +603,14 @@ struct OrderDetailView: View {
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(3...6)
 
+                ErrorBanner(message: vm.actionError)
+
                 RavonPrimaryButton("Отменить заказ") {
                     Task {
-                        await vm.cancelOrder(orderId, reason: cancelReason)
-                        showCancelSheet = false
-                        cancelReason = ""
+                        if await vm.cancelOrder(orderId, reason: cancelReason) {
+                            showCancelSheet = false
+                            cancelReason = ""
+                        }
                     }
                 }
 
@@ -559,6 +634,10 @@ struct OrderDetailView: View {
         case .accepted: return .blue
         case .preparing: return .purple
         case .ready: return .green
+        case .assigned: return .teal
+        case .courierArrivedRestaurant: return .orange
+        case .pickedUp, .delivering, .courierArrivedCustomer: return .teal
+        case .delivered: return .green
         case .cancelled, .cancelledByCustomer, .cancelledByRestaurant,
              .cancelledBySystem, .cancelledByCourier, .rejected:
             return .red

@@ -37,6 +37,7 @@ final class DashboardViewModel: ObservableObject {
 
     func refresh() async {
         isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             async let r = SupabaseService.shared.fetchMyRestaurant()
@@ -46,7 +47,7 @@ final class DashboardViewModel: ObservableObject {
             hours = try await h
             stats = try await s
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -54,7 +55,7 @@ final class DashboardViewModel: ObservableObject {
         do {
             try await RealtimeService.shared.subscribeToRestaurantStatus(restaurantId: restaurant.id)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
             return
         }
         RealtimeService.shared.$lastRestaurantStatusChange
@@ -89,8 +90,12 @@ final class DashboardViewModel: ObservableObject {
         await mutateStatus { try await SupabaseService.shared.resumeRestaurant(id: $0) }
     }
 
-    func setAcceptingOrders(accepting: Bool, until: Date?) async {
+    /// Returns whether the change stuck, so `AcceptingOrdersSheet` can stay open on
+    /// failure instead of closing over an error the covered screen could not present.
+    @discardableResult
+    func setAcceptingOrders(accepting: Bool, until: Date?) async -> Bool {
         isMutatingStatus = true
+        errorMessage = nil
         defer { isMutatingStatus = false }
         do {
             try await SupabaseService.shared.setAcceptingOrders(
@@ -99,13 +104,16 @@ final class DashboardViewModel: ObservableObject {
             if let updated = try await SupabaseService.shared.fetchMyRestaurant() {
                 restaurant = updated
             }
+            return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
+            return false
         }
     }
 
     private func mutateStatus(_ op: (UUID) async throws -> Void) async {
         isMutatingStatus = true
+        errorMessage = nil
         defer { isMutatingStatus = false }
         do {
             try await op(restaurant.id)
@@ -113,47 +121,25 @@ final class DashboardViewModel: ObservableObject {
                 restaurant = updated
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     // MARK: - Hours / Preview State
 
-    /// Current Душанбе weekday (0=Sun..6=Sat) and HH:mm:ss string.
-    private static func dushanbeNow() -> (weekday: Int, hms: String, hourMinute: String) {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "Asia/Dushanbe") ?? .current
-        let comps = cal.dateComponents([.weekday, .hour, .minute, .second], from: Date())
-        let dow = ((comps.weekday ?? 1) - 1) % 7
-        let h = comps.hour ?? 0, m = comps.minute ?? 0, s = comps.second ?? 0
-        return (dow,
-                String(format: "%02d:%02d:%02d", h, m, s),
-                String(format: "%02d:%02d", h, m))
-    }
-
+    /// Whether the restaurant is inside its schedule right now.
+    ///
+    /// The logic lives in `[RestaurantHours].isOpen(at:)` so it can be tested against a
+    /// fixed date — see `RestaurantOpenState.swift` for why the previous inline version
+    /// reported a late-night restaurant as closed 24 hours a day, and for the `isOpen(at:)`
+    /// request filed against RavonCore.
     var isWithinHours: Bool {
-        if hours.isEmpty { return true } // no rows → "always open" per server policy
-        let now = Self.dushanbeNow()
-        guard let today = hours.first(where: { $0.dayOfWeek == now.weekday }) else { return false }
-        if today.isClosed { return false }
-        return today.openingTime <= now.hms && now.hms < today.closingTime
+        hours.isOpen(at: Date())
     }
 
     /// Next opening time as HH:mm (Душанбе) within the next 7 days, or nil if hours are blank.
     var nextOpeningTime: String? {
-        if hours.isEmpty { return nil }
-        let now = Self.dushanbeNow()
-        if let today = hours.first(where: { $0.dayOfWeek == now.weekday }),
-           !today.isClosed, now.hms < today.openingTime {
-            return String(today.openingTime.prefix(5))
-        }
-        for offset in 1...7 {
-            let d = (now.weekday + offset) % 7
-            if let row = hours.first(where: { $0.dayOfWeek == d }), !row.isClosed {
-                return String(row.openingTime.prefix(5))
-            }
-        }
-        return nil
+        hours.nextOpening(at: Date())
     }
 
     /// "до HH:mm" formatted in Душанбе timezone for the dashboard sub-line.

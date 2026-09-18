@@ -96,7 +96,7 @@ struct RestaurantEditView: View {
 
                 Section("Условия") {
                     HStack {
-                        Text("Мин. заказ (сум)")
+                        Text("Мин. заказ (сомони)")
                         Spacer()
                         TextField("0", text: $minOrderAmount)
                             .keyboardType(.numberPad)
@@ -104,7 +104,7 @@ struct RestaurantEditView: View {
                             .frame(width: 100)
                     }
                     HStack {
-                        Text("Доставка (сум)")
+                        Text("Доставка (сомони)")
                         Spacer()
                         TextField("0", text: $deliveryFee)
                             .keyboardType(.numberPad)
@@ -129,6 +129,7 @@ struct RestaurantEditView: View {
                     }
                 }
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Редактировать")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -148,7 +149,11 @@ struct RestaurantEditView: View {
                                 deliveryTimeMin: Int(deliveryTimeMin),
                                 maxConcurrentOrders: Int(maxConcurrentOrders)
                             )
-                            dismiss()
+                            // Closing the sheet on failure reported a save that did not
+                            // happen; the error was left for a screen the sheet covered.
+                            if vm.errorMessage == nil {
+                                dismiss()
+                            }
                         }
                     }
                     .disabled(name.isEmpty || vm.isSaving)

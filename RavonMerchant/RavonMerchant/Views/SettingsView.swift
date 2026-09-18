@@ -58,8 +58,8 @@ struct SettingsView: View {
                         if let address = restaurant.address {
                             LabeledContent("Адрес", value: address)
                         }
-                        LabeledContent("Мин. заказ", value: "\(Int(restaurant.minOrderAmount)) сум")
-                        LabeledContent("Стоимость доставки", value: "\(Int(restaurant.deliveryFee)) сум")
+                        LabeledContent("Мин. заказ", value: "\(Int(restaurant.minOrderAmount)) сомони")
+                        LabeledContent("Стоимость доставки", value: "\(Int(restaurant.deliveryFee)) сомони")
                         if let max = restaurant.maxConcurrentOrders {
                             LabeledContent("Макс. одновременных", value: "\(max)")
                         }
@@ -163,14 +163,7 @@ struct SettingsView: View {
             } message: {
                 Text("Ресторан будет закрыт безвозвратно. Это действие нельзя отменить.")
             }
-            .alert("Ошибка", isPresented: .init(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
-            }
+            .errorAlert($vm.errorMessage, suppressed: showEditSheet)
         }
     }
 

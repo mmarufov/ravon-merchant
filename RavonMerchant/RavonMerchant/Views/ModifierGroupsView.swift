@@ -96,7 +96,7 @@ struct ModifierGroupsView: View {
                                         Text(option.name)
                                         Spacer()
                                         if option.priceAdjustment != 0 {
-                                            Text("+\(Int(option.priceAdjustment)) сум")
+                                            Text("+\(Int(option.priceAdjustment)) сомони")
                                                 .font(.subheadline)
                                                 .foregroundStyle(.secondary)
                                                 .monospacedDigit()
@@ -171,14 +171,9 @@ struct ModifierGroupsView: View {
         .sheet(item: $linkingGroup) { group in
             linkItemSheet(group)
         }
-        .alert("Ошибка", isPresented: .init(
-            get: { vm.errorMessage != nil },
-            set: { if !$0 { vm.errorMessage = nil } }
-        )) {
-            Button("OK") { vm.errorMessage = nil }
-        } message: {
-            Text(vm.errorMessage ?? "")
-        }
+        // No screen-level alert here: this view is pushed inside `MenuView`'s stack and
+        // `MenuView` already presents `vm.errorMessage`. The sheets below need their own,
+        // because an alert cannot be presented from a view a sheet is covering.
     }
 
     // MARK: - Create Group Sheet
@@ -207,6 +202,7 @@ struct ModifierGroupsView: View {
                 }
                 .disabled(newGroupName.isEmpty)
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Новый модификатор")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -225,7 +221,7 @@ struct ModifierGroupsView: View {
             Form {
                 TextField("Название опции", text: $newOptionName)
                 HStack {
-                    Text("Доплата (сум)")
+                    Text("Доплата (сомони)")
                     Spacer()
                     TextField("0", text: $newOptionPrice)
                         .keyboardType(.numberPad)
@@ -249,6 +245,7 @@ struct ModifierGroupsView: View {
                 }
                 .disabled(newOptionName.isEmpty)
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Новая опция")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -286,6 +283,7 @@ struct ModifierGroupsView: View {
                     }
                 }
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Редактировать")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -304,7 +302,7 @@ struct ModifierGroupsView: View {
             Form {
                 TextField("Название", text: $editOptionName)
                 HStack {
-                    Text("Доплата (сум)")
+                    Text("Доплата (сомони)")
                     Spacer()
                     TextField("0", text: $editOptionPrice)
                         .keyboardType(.numberPad)
@@ -328,6 +326,7 @@ struct ModifierGroupsView: View {
                     }
                 }
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Редактировать опцию")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -348,19 +347,20 @@ struct ModifierGroupsView: View {
                     Button {
                         Task {
                             await vm.linkModifierToItem(menuItemId: item.id, modifierGroupId: group.id)
-                            linkingGroup = nil
+                            if vm.errorMessage == nil { linkingGroup = nil }
                         }
                     } label: {
                         HStack {
                             Text(item.name)
                             Spacer()
-                            Text("\(Int(item.price)) сум")
+                            Text("\(Int(item.price)) сомони")
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .tint(.primary)
                 }
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Привязать к блюду")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

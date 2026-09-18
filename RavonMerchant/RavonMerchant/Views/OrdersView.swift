@@ -3,40 +3,23 @@ import RavonCore
 
 struct OrdersView: View {
     @StateObject private var vm: OrdersViewModel
-    @State private var selectedTab = 0
+    @State private var selectedBucket: MerchantQueueBucket = .new
 
     init(restaurantId: UUID) {
         _vm = StateObject(wrappedValue: OrdersViewModel(restaurantId: restaurantId))
     }
 
     private var currentOrders: [Order] {
-        switch selectedTab {
-        case 0: return vm.newOrders
-        case 1: return vm.activeOrders
-        case 2: return vm.readyOrders
-        case 3: return vm.scheduledOrders
-        default: return []
-        }
-    }
-
-    private var emptyMessage: String {
-        switch selectedTab {
-        case 0: return "Новых заказов нет"
-        case 1: return "Нет активных заказов"
-        case 2: return "Нет готовых заказов"
-        case 3: return "Нет запланированных заказов"
-        default: return ""
-        }
+        vm.orders(in: selectedBucket)
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("", selection: $selectedTab) {
-                    Text("Новые (\(vm.newOrders.count))").tag(0)
-                    Text("В работе (\(vm.activeOrders.count))").tag(1)
-                    Text("Готовые (\(vm.readyOrders.count))").tag(2)
-                    Text("Запланированные (\(vm.scheduledOrders.count))").tag(3)
+                Picker("", selection: $selectedBucket) {
+                    ForEach(MerchantQueueBucket.allCases, id: \.self) { bucket in
+                        Text("\(bucket.title) (\(vm.orders(in: bucket).count))").tag(bucket)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .padding()
@@ -48,14 +31,14 @@ struct OrdersView: View {
                 } else if currentOrders.isEmpty {
                     Spacer()
                     ContentUnavailableView(
-                        selectedTab == 3 ? "Нет запланированных" : "Нет заказов",
-                        systemImage: selectedTab == 3 ? "calendar" : "tray",
-                        description: Text(emptyMessage)
+                        selectedBucket == .scheduled ? "Нет запланированных" : "Нет заказов",
+                        systemImage: selectedBucket == .scheduled ? "calendar" : "tray",
+                        description: Text(selectedBucket.emptyMessage)
                     )
                     Spacer()
                 } else {
                     List(currentOrders) { order in
-                        if selectedTab == 3 {
+                        if selectedBucket == .scheduled {
                             ScheduledOrderRow(order: order)
                                 .contentShape(Rectangle())
                         } else {
@@ -81,6 +64,9 @@ struct OrdersView: View {
             .refreshable {
                 await vm.fetchOrders()
             }
+            // Queue-level failures only. Action failures render inline in `OrderDetailView`,
+            // which is where the merchant is standing when they happen.
+            .errorAlert($vm.listError)
         }
     }
 }
@@ -108,7 +94,7 @@ struct OrderRowView: View {
                     Text("Заказ #\(order.id.uuidString.prefix(6).uppercased())")
                         .font(.headline)
                     Spacer()
-                    Text("\(Int(order.total)) сум")
+                    Text("\(Int(order.total)) сомони")
                         .font(.headline)
                         .foregroundStyle(Color.ravonRed)
                 }
@@ -124,11 +110,20 @@ struct OrderRowView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if [.preparing, .ready].contains(order.status),
-               let code = order.pickupVerificationCode {
-                Text("Готов к выдаче — Код для курьера: \(code)")
+            if order.merchantShowsPickupCode, let code = order.pickupVerificationCode {
+                // Gated on the merchant's `showPickupCode` obligation rather than on a
+                // hand-written status list. The old list stopped at `.ready`, so the code
+                // disappeared the instant a courier claimed the order — the one moment it
+                // is actually needed.
+                Text("\(order.isInMerchantHandoff ? "Курьер за заказом" : "Готов к выдаче") — Код для курьера: \(code)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.ravonRed)
+            }
+
+            if order.status == .courierArrivedRestaurant {
+                Text("Курьер у ресторана — назовите код")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
             }
 
             if order.restaurantDelayMin > 0 {
@@ -173,7 +168,7 @@ struct OrderRowView: View {
             .localizedDisplayName ?? "Без причины"
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text("[CANCELLED] Заказ #\(order.id.uuidString.prefix(6).uppercased()) · \(Int(order.total)) ₽")
+                Text("[CANCELLED] Заказ #\(order.id.uuidString.prefix(6).uppercased()) · \(Int(order.total)) сомони")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.red)
                 Spacer()
@@ -190,6 +185,9 @@ struct OrderRowView: View {
         case .accepted:           return "checkmark.circle"
         case .preparing:          return "flame"
         case .ready:              return "bag.fill"
+        case .assigned:           return "bicycle"
+        case .courierArrivedRestaurant: return "figure.wave"
+        case .pickedUp:           return "shippingbox.fill"
         case .scheduled:          return "calendar"
         case .cancelledByCourier: return "xmark.octagon.fill"
         case .cancelledBySystem:  return "exclamationmark.triangle.fill"
@@ -203,6 +201,8 @@ struct OrderRowView: View {
         case .accepted:  return .blue
         case .preparing: return .purple
         case .ready:     return .green
+        case .assigned:  return .teal
+        case .courierArrivedRestaurant: return .orange
         case .scheduled: return .blue
         case .cancelled, .cancelledByCustomer, .cancelledByRestaurant,
              .cancelledBySystem, .cancelledByCourier, .rejected:
@@ -224,7 +224,7 @@ struct ScheduledOrderRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.blue)
                 Spacer()
-                Text("\(Int(order.total)) сум")
+                Text("\(Int(order.total)) сомони")
                     .font(.headline)
                     .foregroundStyle(Color.ravonRed)
             }

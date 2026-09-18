@@ -38,14 +38,7 @@ struct OnboardingView: View {
                     await vm.resumeOnboarding(for: existingRestaurant)
                 }
             }
-            .alert("Ошибка", isPresented: .init(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
-            }
+            .errorAlert($vm.errorMessage)
         }
     }
 
@@ -100,13 +93,13 @@ private struct Step1CreateRestaurant: View {
 
                     HStack(spacing: 12) {
                         VStack(alignment: .leading) {
-                            Text("Доставка (сум)")
+                            Text("Доставка (сомони)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             RavonTextField(icon: "banknote", placeholder: "0", text: $deliveryFee, keyboardType: .numberPad)
                         }
                         VStack(alignment: .leading) {
-                            Text("Мин. заказ (сум)")
+                            Text("Мин. заказ (сомони)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             RavonTextField(icon: "cart", placeholder: "0", text: $minOrderAmount, keyboardType: .numberPad)
@@ -401,7 +394,7 @@ private struct Step4MenuItems: View {
                 VStack(spacing: 12) {
                     RavonTextField(icon: "fork.knife", placeholder: "Название блюда", text: $itemName)
                     RavonTextField(icon: "text.alignleft", placeholder: "Описание (необязательно)", text: $itemDescription)
-                    RavonTextField(icon: "banknote", placeholder: "Цена (сум)", text: $itemPrice, keyboardType: .numberPad)
+                    RavonTextField(icon: "banknote", placeholder: "Цена (сомони)", text: $itemPrice, keyboardType: .numberPad)
                 }
 
                 RavonPrimaryButton("Добавить блюдо", isLoading: vm.isLoading) {
@@ -435,7 +428,7 @@ private struct Step4MenuItems: View {
                                     .foregroundStyle(.green)
                                 Text(item.name)
                                 Spacer()
-                                Text("\(Int(item.price)) сум")
+                                Text("\(Int(item.price)) сомони")
                                     .foregroundStyle(.secondary)
                                     .monospacedDigit()
                             }
@@ -640,7 +633,7 @@ private struct Step6Preview: View {
                                                 Text(item.name)
                                                     .font(.caption)
                                                 Spacer()
-                                                Text("\(Int(item.price)) сум")
+                                                Text("\(Int(item.price)) сомони")
                                                     .font(.caption)
                                                     .foregroundStyle(.secondary)
                                                     .monospacedDigit()

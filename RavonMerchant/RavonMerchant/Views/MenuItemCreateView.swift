@@ -59,7 +59,7 @@ struct MenuItemCreateView: View {
                     TextField("Описание (необязательно)", text: $description, axis: .vertical)
                         .lineLimit(2...4)
                     HStack {
-                        Text("Цена (сум)")
+                        Text("Цена (сомони)")
                         Spacer()
                         TextField("0", text: $price)
                             .keyboardType(.numberPad)
@@ -94,14 +94,7 @@ struct MenuItemCreateView: View {
                     Button("Отмена") { dismiss() }
                 }
             }
-            .alert("Ошибка", isPresented: .init(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
-            }
+            .errorAlert($vm.errorMessage)
         }
     }
 

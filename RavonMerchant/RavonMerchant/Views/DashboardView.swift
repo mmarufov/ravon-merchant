@@ -35,12 +35,13 @@ struct DashboardView: View {
                     isCurrentlyAccepting: vm.restaurant.isAcceptingOrders,
                     acceptingOrdersUntil: vm.restaurant.acceptingOrdersUntil,
                     isBusy: vm.isMutatingStatus,
+                    errorMessage: vm.errorMessage,
                     onPickPreset: { interval in
                         let until = interval.map { Date().addingTimeInterval($0) }
-                        Task { await vm.setAcceptingOrders(accepting: false, until: until) }
+                        return await vm.setAcceptingOrders(accepting: false, until: until)
                     },
                     onResume: {
-                        Task { await vm.setAcceptingOrders(accepting: true, until: nil) }
+                        await vm.setAcceptingOrders(accepting: true, until: nil)
                     }
                 )
             }
@@ -52,14 +53,7 @@ struct DashboardView: View {
             } message: {
                 Text("Клиенты перестанут видеть ваш ресторан. Возобновить можно в любой момент.")
             }
-            .alert("Ошибка", isPresented: .init(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
-            }
+            .errorAlert($vm.errorMessage, suppressed: showAcceptingSheet)
         }
     }
 
@@ -253,5 +247,5 @@ struct DashboardView: View {
         }
     }
 
-    private func formatCurrency(_ value: Double) -> String { "\(Int(value)) сум" }
+    private func formatCurrency(_ value: Double) -> String { "\(Int(value)) сомони" }
 }

@@ -16,6 +16,12 @@ struct MenuView: View {
         _vm = StateObject(wrappedValue: MenuViewModel(restaurantId: restaurantId))
     }
 
+    /// True while any sheet covers this screen. The sheets present the error themselves;
+    /// the screen must not try to present it at the same time.
+    private var isPresentingSheet: Bool {
+        showCreateCategory || showCreateItem || editingCategory != nil
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -73,14 +79,7 @@ struct MenuView: View {
             } message: { _ in
                 Text("Категория будет скрыта от клиентов. У вас будет 30 дней, чтобы восстановить. Если в категории есть блюда — сначала удалите их.")
             }
-            .alert("Ошибка", isPresented: .init(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
-            }
+            .errorAlert($vm.errorMessage, suppressed: isPresentingSheet)
         }
     }
 
@@ -237,6 +236,7 @@ struct MenuView: View {
                 }
                 .disabled(newCategoryName.isEmpty)
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Новая категория")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -263,6 +263,7 @@ struct MenuView: View {
                 }
                 .disabled(editCategoryName.isEmpty)
             }
+            .errorAlert($vm.errorMessage)
             .navigationTitle("Редактировать категорию")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -290,7 +291,7 @@ struct MenuItemRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(Int(item.price)) сум")
+                Text("\(Int(item.price)) сомони")
                     .font(.subheadline.bold()).monospacedDigit()
                 Text(item.isAvailable ? "В наличии" : "Нет в наличии")
                     .font(.caption2)

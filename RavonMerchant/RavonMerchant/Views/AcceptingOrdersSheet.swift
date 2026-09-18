@@ -5,22 +5,30 @@ struct AcceptingOrdersSheet: View {
     let isCurrentlyAccepting: Bool
     let acceptingOrdersUntil: Date?
     let isBusy: Bool
-    let onPickPreset: (TimeInterval?) -> Void
-    let onResume: () -> Void
+    /// The owner's current error, rendered inline below. `DashboardView`'s alert cannot
+    /// present while this sheet covers it, so the sheet has to show the failure itself.
+    let errorMessage: String?
+    /// Return false when the change did not stick: the sheet stays open with the error
+    /// visible instead of closing and reporting success that never happened.
+    let onPickPreset: (TimeInterval?) async -> Bool
+    let onResume: () async -> Bool
 
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
+                ErrorBanner(message: errorMessage)
+
                 if isCurrentlyAccepting {
                     pauseHeader
                     presetGrid
                 } else {
                     resumeHeader
                     RavonPrimaryButton("Снова принимать заказы", isLoading: isBusy) {
-                        onResume()
-                        dismiss()
+                        Task {
+                            if await onResume() { dismiss() }
+                        }
                     }
                 }
                 Spacer(minLength: 0)
@@ -81,8 +89,9 @@ struct AcceptingOrdersSheet: View {
 
     private func chip(title: String, subtitle: String, interval: TimeInterval?) -> some View {
         Button {
-            onPickPreset(interval)
-            dismiss()
+            Task {
+                if await onPickPreset(interval) { dismiss() }
+            }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {

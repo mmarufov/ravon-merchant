@@ -21,6 +21,7 @@ final class MenuViewModel: ObservableObject {
 
     func fetchMenu() async {
         isLoading = true
+        errorMessage = nil
 
         do {
             async let cats = SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
@@ -31,7 +32,7 @@ final class MenuViewModel: ObservableObject {
             items = try await menuItems
             modifierGroups = try await mods
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
 
         isLoading = false
@@ -48,11 +49,12 @@ final class MenuViewModel: ObservableObject {
     // MARK: - Menu Item CRUD
 
     func toggleAvailability(item: MenuItem) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.toggleMenuItemAvailability(id: item.id, isAvailable: !item.isAvailable)
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -66,6 +68,7 @@ final class MenuViewModel: ObservableObject {
         stockCount: Int?
     ) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.updateMenuItem(
                 id: id,
@@ -78,7 +81,7 @@ final class MenuViewModel: ObservableObject {
             try await SupabaseService.shared.updateStock(menuItemId: id, count: stockCount)
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
@@ -92,6 +95,7 @@ final class MenuViewModel: ObservableObject {
         sortOrder: Int
     ) async {
         isSaving = true
+        errorMessage = nil
         do {
             var imageUrl: String?
             let insert = MenuItemInsert(
@@ -117,31 +121,34 @@ final class MenuViewModel: ObservableObject {
 
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func deleteItem(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.deleteMenuItem(id: id)
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func restoreItem(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.restoreMenuItem(id: id)
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func uploadMenuItemImage(menuItemId: UUID, imageData: Data) async {
         isSaving = true
+        errorMessage = nil
         do {
             _ = try await SupabaseService.shared.uploadMenuItemImage(
                 menuItemId: menuItemId,
@@ -150,7 +157,7 @@ final class MenuViewModel: ObservableObject {
             )
             items = try await SupabaseService.shared.fetchAllMenuItems(restaurantId: restaurantId)
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
@@ -159,6 +166,7 @@ final class MenuViewModel: ObservableObject {
 
     func createCategory(name: String, sortOrder: Int) async {
         isSaving = true
+        errorMessage = nil
         do {
             let insert = MenuCategoryInsert(
                 restaurantId: restaurantId,
@@ -169,50 +177,54 @@ final class MenuViewModel: ObservableObject {
             categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func updateCategory(id: UUID, name: String?, sortOrder: Int?) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.updateMenuCategory(id: id, name: name, sortOrder: sortOrder)
             categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func deleteCategory(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.deleteMenuCategory(id: id)
             categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func restoreCategory(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.restoreMenuCategory(id: id)
             categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
-            errorMessage = mapError(error)
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func toggleCategoryAvailability(_ category: MenuCategory) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.toggleMenuCategoryAvailability(id: category.id, isAvailable: !category.isAvailable)
             categories = try await SupabaseService.shared.fetchAllMenuCategories(restaurantId: restaurantId)
                 .sorted { $0.sortOrder < $1.sortOrder }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -220,6 +232,7 @@ final class MenuViewModel: ObservableObject {
 
     func createModifierGroup(name: String, isRequired: Bool, minSelections: Int, maxSelections: Int, sortOrder: Int) async {
         isSaving = true
+        errorMessage = nil
         do {
             let insert = ModifierGroupInsert(
                 restaurantId: restaurantId,
@@ -232,13 +245,14 @@ final class MenuViewModel: ObservableObject {
             _ = try await SupabaseService.shared.createModifierGroup(insert)
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func updateModifierGroup(id: UUID, name: String?, isRequired: Bool?, minSelections: Int?, maxSelections: Int?, sortOrder: Int?) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.updateModifierGroup(
                 id: id,
@@ -250,17 +264,18 @@ final class MenuViewModel: ObservableObject {
             )
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func deleteModifierGroup(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.deleteModifierGroup(id: id)
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
@@ -268,6 +283,7 @@ final class MenuViewModel: ObservableObject {
 
     func createModifierOption(groupId: UUID, name: String, priceAdjustment: Double, sortOrder: Int) async {
         isSaving = true
+        errorMessage = nil
         do {
             let insert = ModifierOptionInsert(
                 groupId: groupId,
@@ -278,13 +294,14 @@ final class MenuViewModel: ObservableObject {
             _ = try await SupabaseService.shared.createModifierOption(insert)
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func updateModifierOption(id: UUID, name: String?, priceAdjustment: Double?, isAvailable: Bool?, sortOrder: Int?) async {
         isSaving = true
+        errorMessage = nil
         do {
             try await SupabaseService.shared.updateModifierOption(
                 id: id,
@@ -295,49 +312,39 @@ final class MenuViewModel: ObservableObject {
             )
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
         isSaving = false
     }
 
     func deleteModifierOption(id: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.deleteModifierOption(id: id)
             modifierGroups = try await SupabaseService.shared.fetchAllModifierGroups(restaurantId: restaurantId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     // MARK: - Modifier Linking
 
     func linkModifierToItem(menuItemId: UUID, modifierGroupId: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.linkModifierGroup(menuItemId: menuItemId, modifierGroupId: modifierGroupId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
     func unlinkModifierFromItem(menuItemId: UUID, modifierGroupId: UUID) async {
+        errorMessage = nil
         do {
             try await SupabaseService.shared.unlinkModifierGroup(menuItemId: menuItemId, modifierGroupId: modifierGroupId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = MerchantError.message(for: error)
         }
     }
 
-    // MARK: - Error Mapping
-
-    private func mapError(_ error: Error) -> String {
-        let desc = error.localizedDescription
-        if desc.contains("categoryNotEmpty") {
-            return "Сначала удалите все блюда из категории"
-        } else if desc.contains("imageTooLarge") {
-            return "Фото слишком большое (макс. 5 МБ)"
-        } else if desc.contains("unsupportedImageFormat") {
-            return "Поддерживаются только JPG, PNG, WEBP"
-        }
-        return desc
-    }
 }
